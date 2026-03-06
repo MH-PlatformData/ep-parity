@@ -1,0 +1,32 @@
+# Credentials — NEVER commit
+.env
+paths_config.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output data
+output/
+*.psv
+*.xlsx
+
+# Logs
+*.log

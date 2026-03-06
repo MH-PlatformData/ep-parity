@@ -1,0 +1,35 @@
+[project]
+name = "ep-parity"
+version = "1.0.0"
+description = "Eligibility Processor parity testing tool suite"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.35.0",
+    "click>=8.0",
+    "numpy>=2.1",
+    "openpyxl>=3.1",
+    "pandas>=2.2",
+    "psycopg2-binary>=2.9",
+    "python-dotenv>=1.0",
+    "SQLAlchemy>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.10",
+    "moto[sqs]>=4.0",
+]
+
+[project.scripts]
+ep-parity = "ep_parity.cli.main:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ep_parity*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

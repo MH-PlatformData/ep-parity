@@ -1,0 +1,26 @@
+[paths]
+# Base directory for parity testing output (exported query results)
+base_path = /path/to/your/parity/testing/results
+
+# Directory containing SQL query files
+sql_directory = /path/to/your/sql/scripts
+
+[output]
+# Format for run output directories
+directory_format = {emp_id} {date} {time}
+date_format = %%m-%%d-%%y %%H%%M
+
+[defaults]
+# Default values for CLI arguments. All are optional.
+# CLI arguments always override these values.
+
+# db_target = both
+# env = qa
+# aws_profile = DataEngineerQA
+# check_interval = 120
+# max_wait_time = 7200
+# parallel = false
+
+# Set to true to fetch DB credentials from AWS Secrets Manager instead of .env
+# use_aws_secrets = false
+# aws_secret_path = your/secret/path

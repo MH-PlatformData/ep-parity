@@ -1,0 +1,16 @@
+services:
+  ep-parity:
+    build: .
+    env_file: .env
+    volumes:
+      - ./config:/app/config             # paths_config.ini, comparison_config.ini
+      - ./output:/app/output             # Parity testing results
+      - ./queries:/app/queries           # SQL query files
+      - ~/.aws:/root/.aws:ro             # AWS credentials for SQS monitoring
+    environment:
+      - PARITY_CONFIG_DIR=/app/config
+      - PARITY_OUTPUT_DIR=/app/output
+      - PARITY_SQL_DIR=/app/queries
+    # network_mode: host required for VPN access to internal Marathon Health databases.
+    # On macOS with Docker Desktop, use host.docker.internal in DB URIs instead.
+    network_mode: host
