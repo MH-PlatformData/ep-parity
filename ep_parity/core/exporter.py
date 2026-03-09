@@ -122,7 +122,11 @@ def export_queries(
     for sql_filename, output_filename in queries.items():
         sql_path = sql_dir / sql_filename
         if not sql_path.exists():
-            logger.warning(f"SQL file not found, skipping: {sql_path}")
+            logger.warning(
+                f"SQL file not found, skipping: {sql_path}\n"
+                f"  Check that sql_directory is correct in paths_config.ini.\n"
+                f"  Current sql_directory: {sql_dir}"
+            )
             continue
 
         query = read_and_format_sql_file(sql_path, emp_id, created_at, now)

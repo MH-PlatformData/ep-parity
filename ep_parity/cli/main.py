@@ -32,9 +32,13 @@ from ep_parity.cli.compare_cmd import compare  # noqa: E402
 from ep_parity.cli.monitor_cmd import monitor  # noqa: E402
 from ep_parity.cli.report_cmd import report  # noqa: E402
 from ep_parity.cli.validate_cmd import validate  # noqa: E402
+from ep_parity.cli.config_cmd import config  # noqa: E402
+from ep_parity.cli.init_cmd import init  # noqa: E402
 
 cli.add_command(export)
 cli.add_command(compare)
 cli.add_command(monitor)
 cli.add_command(report)
 cli.add_command(validate)
+cli.add_command(config)
+cli.add_command(init)

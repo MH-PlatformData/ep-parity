@@ -1,26 +1,45 @@
 [paths]
-# Base directory for parity testing output (exported query results)
-base_path = /path/to/your/parity/testing/results
+# Base directory where parity testing results are saved.
+# A new subfolder is created for each day and each run.
+# Example output: /Users/jane.doe/Documents/Parity Testing/03-09-2026/150 03-09-26 1430/
+base_path = /Users/jane.doe/Documents/Parity Testing
 
-# Directory containing SQL query files
-sql_directory = /path/to/your/sql/scripts
+# Directory containing the SQL query files (*.sql).
+# These are the queries that get run against each database.
+sql_directory = /Users/jane.doe/Documents/Parity Testing/scripts
 
 [output]
-# Format for run output directories
+# How run folders are named. Available placeholders: {emp_id}, {date}, {time}
 directory_format = {emp_id} {date} {time}
+
+# Date/time format for folder names.
+# NOTE: Use %% (double percent) in .ini files -- configparser treats a single %
+# as a variable reference. The tool converts %% to % automatically.
+# %%m = month, %%d = day, %%y = 2-digit year, %%H = hour (24h), %%M = minute
 date_format = %%m-%%d-%%y %%H%%M
 
 [defaults]
-# Default values for CLI arguments. All are optional.
+# Default values for CLI arguments. All optional -- uncomment to enable.
 # CLI arguments always override these values.
 
+# Which databases to query: both, primary, replicated, dev, prod
 # db_target = both
+
+# Environment name (qa or dev) -- used by the monitor command
 # env = qa
+
+# AWS profile for SQS monitoring (run: aws sso login --profile DataEngineerQA)
 # aws_profile = DataEngineerQA
+
+# Seconds between monitor polling checks
 # check_interval = 120
+
+# Maximum seconds to wait during monitoring (default: 2 hours)
 # max_wait_time = 7200
+
+# Run employers in parallel by default
 # parallel = false
 
-# Set to true to fetch DB credentials from AWS Secrets Manager instead of .env
+# Fetch DB credentials from AWS Secrets Manager instead of .env
 # use_aws_secrets = false
 # aws_secret_path = your/secret/path

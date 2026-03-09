@@ -108,10 +108,136 @@ def _check_comparison_config(config_dir: Path) -> bool:
     return True
 
 
+def _check_sql_directory_contents(config_dir: Path) -> bool:
+    """Verify SQL query files exist and cross-reference against expected queries."""
+    import configparser
+
+    config = configparser.ConfigParser()
+    config_path = config_dir / "paths_config.ini"
+    if not config_path.exists():
+        print("  [skip] Cannot check — paths_config.ini missing")
+        return True
+
+    config.read(config_path)
+    sql_dir_str = config.get("paths", "sql_directory", fallback="")
+    if not sql_dir_str or "/path/to/your/" in sql_dir_str:
+        print("  [skip] Cannot check — sql_directory not configured")
+        return True
+
+    sql_dir = Path(sql_dir_str)
+    if not sql_dir.exists():
+        print(f"  [FAIL] sql_directory does not exist: {sql_dir}")
+        return False
+
+    from ep_parity.core.exporter import QUERY_MAP
+
+    expected = set(QUERY_MAP.keys())
+    found = {f.name for f in sql_dir.glob("*.sql")}
+    missing = expected - found
+
+    if not found:
+        print(f"  [FAIL] No .sql files found in {sql_dir}")
+        return False
+
+    if missing:
+        print(f"  [warn] Found {len(found)}/{len(expected)} expected SQL files")
+        for name in sorted(missing):
+            print(f"         Missing: {name}")
+        return True  # Warning, not a failure — some queries may be intentionally excluded
+
+    print(f"  [pass] Found all {len(expected)} expected SQL files")
+    return True
+
+
+def _check_write_permissions(config_dir: Path) -> bool:
+    """Verify the output directory is writable."""
+    import configparser
+    import tempfile
+
+    config = configparser.ConfigParser()
+    config_path = config_dir / "paths_config.ini"
+    if not config_path.exists():
+        print("  [skip] Cannot check — paths_config.ini missing")
+        return True
+
+    config.read(config_path)
+    base_path_str = config.get("paths", "base_path", fallback="")
+    if not base_path_str or "/path/to/your/" in base_path_str:
+        print("  [skip] Cannot check — base_path not configured")
+        return True
+
+    base_path = Path(base_path_str)
+    if not base_path.exists():
+        try:
+            base_path.mkdir(parents=True, exist_ok=True)
+            print(f"  [pass] Created output directory: {base_path}")
+            return True
+        except OSError as e:
+            print(f"  [FAIL] Cannot create output directory: {e}")
+            return False
+
+    try:
+        with tempfile.NamedTemporaryFile(dir=base_path, delete=True):
+            pass
+        print(f"  [pass] Output directory is writable: {base_path}")
+        return True
+    except OSError:
+        print(f"  [FAIL] Output directory is not writable: {base_path}")
+        return False
+
+
+def _check_db_connectivity(config_dir: Path) -> bool:
+    """Test actual database connectivity (requires VPN)."""
+    try:
+        from ep_parity.core.config import AppConfig, DB_TARGET_ENV_VARS
+        from ep_parity.core.database import DatabaseManager
+    except ImportError:
+        print("  [skip] Required modules not available")
+        return True
+
+    import os
+
+    config = AppConfig(config_dir=str(config_dir))
+    db = DatabaseManager(config)
+    all_ok = True
+
+    for target, env_var in DB_TARGET_ENV_VARS.items():
+        uri = os.getenv(env_var, "")
+        if not uri:
+            continue  # Skip unconfigured targets
+
+        success, message = db.test_connection(target)
+        if success:
+            print(f"  [pass] {target:12s} {message}")
+        else:
+            print(f"  [FAIL] {target:12s} {message}")
+            all_ok = False
+
+    db.dispose_all()
+    if not any(os.getenv(v) for v in DB_TARGET_ENV_VARS.values()):
+        print("  [skip] No database URIs configured")
+    return all_ok
+
+
 @click.command()
+@click.option(
+    "--check-db/--no-check-db",
+    default=False,
+    help="Test database connectivity (requires VPN connection).",
+)
 @click.pass_context
-def validate(ctx: click.Context) -> None:
-    """Check if the environment is properly configured for parity testing."""
+def validate(ctx: click.Context, check_db: bool) -> None:
+    """Check if the environment is properly configured for parity testing.
+
+    By default, validates configuration files only. Use --check-db to also
+    test actual database connectivity (requires VPN).
+
+    Examples:
+
+        ep-parity validate
+
+        ep-parity validate --check-db
+    """
     config_dir = Path(ctx.obj.get("config_dir") or ".")
 
     print("=" * 60)
@@ -133,16 +259,35 @@ def validate(ctx: click.Context) -> None:
     print("\nPaths Configuration:")
     checks.append(_check_paths_config(config_dir))
 
+    print("\nSQL Directory:")
+    checks.append(_check_sql_directory_contents(config_dir))
+
+    print("\nOutput Directory:")
+    checks.append(_check_write_permissions(config_dir))
+
     print("\nComparison Configuration:")
     checks.append(_check_comparison_config(config_dir))
+
+    if check_db:
+        print("\nDatabase Connectivity:")
+        checks.append(_check_db_connectivity(config_dir))
+    else:
+        print("\nDatabase Connectivity:")
+        print("  [skip] Use --check-db to test (requires VPN)")
 
     print("\n" + "=" * 60)
     if all(checks):
         print("[pass] All checks passed. Ready to run parity tests.")
         print("\nNext steps:")
-        print("  1. Connect to VPN")
-        print("  2. ep-parity export --emp_ids <ID> --db_target both")
+        if not check_db:
+            print("  1. Connect to VPN")
+            print("  2. ep-parity validate --check-db")
+            print("  3. ep-parity export --emp_ids <ID> --db_target both")
+        else:
+            print("  1. ep-parity export --emp_ids <ID> --db_target both")
     else:
         print("[warn] Some checks need attention. Review the issues above.")
-        print("\nFor help, see README.md")
+        print("\nFor help:")
+        print("  ep-parity init       — Interactive setup wizard")
+        print("  ep-parity config show — View current configuration")
     print("=" * 60)

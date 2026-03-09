@@ -45,8 +45,13 @@ def _export_single(
             message=f"Exported to {output_dir}{comp_msg}",
             data={"output_dir": str(output_dir), "targets": targets},
         )
-    except Exception as e:
+    except ConnectionError as e:
         return TaskResult(employer_id=emp_id, success=False, message=str(e))
+    except Exception as e:
+        msg = str(e)
+        if "could not translate host name" in msg.lower():
+            msg += "\n  Tip: Are you connected to VPN?"
+        return TaskResult(employer_id=emp_id, success=False, message=msg)
 
 
 @click.command()

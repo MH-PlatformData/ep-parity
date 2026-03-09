@@ -106,7 +106,10 @@ class AppConfig:
             load_dotenv(env_path, override=True)
             logger.debug(f"Loaded .env from {env_path}")
         else:
-            logger.debug(f"No .env found at {env_path}")
+            logger.warning(
+                f"No .env file found at {env_path}. "
+                "Run 'ep-parity init' to create one, or copy .env.example to .env"
+            )
 
         # Load paths_config.ini
         paths_ini = (
@@ -148,8 +151,8 @@ class AppConfig:
         if self._paths_config.has_option("paths", "base_path"):
             return Path(self._paths_config.get("paths", "base_path"))
         raise ValueError(
-            "base_path not configured. Set it in paths_config.ini [paths] section "
-            "or PARITY_OUTPUT_DIR environment variable."
+            "base_path not configured. Run 'ep-parity init' to set it up, "
+            "or add it to paths_config.ini [paths] section."
         )
 
     @property
@@ -161,8 +164,8 @@ class AppConfig:
         if self._paths_config.has_option("paths", "sql_directory"):
             return Path(self._paths_config.get("paths", "sql_directory"))
         raise ValueError(
-            "sql_directory not configured. Set it in paths_config.ini [paths] section "
-            "or PARITY_SQL_DIR environment variable."
+            "sql_directory not configured. Run 'ep-parity init' to set it up, "
+            "or add it to paths_config.ini [paths] section."
         )
 
     @property
@@ -205,7 +208,8 @@ class AppConfig:
         uri = os.getenv(env_var, "")
         if not uri:
             raise ValueError(
-                f"{env_var} not set. Add it to your .env file or set it as an environment variable."
+                f"{env_var} not set. Run 'ep-parity init' to configure credentials, "
+                f"or add {env_var} to your .env file."
             )
         return uri
 

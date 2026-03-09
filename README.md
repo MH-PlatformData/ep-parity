@@ -2,6 +2,10 @@
 
 A CLI tool for comparing data between primary and replicated databases used by the Eligibility Processor. It exports query results, compares them file-by-file, monitors processing completion, and generates Excel summary reports.
 
+## What is Parity Testing?
+
+Marathon Health's Eligibility Processor (EP) is being migrated from version 1.5 to version 2.0. During the transition, both versions process the same eligibility files in parallel — EP 1.5 writes to the "primary" database and EP 2.0 writes to the "replicated" database. Parity testing confirms that both versions produce identical results, so we can trust EP 2.0 before decommissioning EP 1.5.
+
 ## Overview
 
 EP Parity validates that the eligibility processor produces identical results in primary (EP 1.5) and replicated (EP 2.0) databases. The workflow is:
@@ -46,19 +50,38 @@ pip install -e .
 
 This installs the `ep-parity` CLI globally within the virtualenv.
 
-### Configure
+### Configure (Recommended: Interactive Setup)
+
+The easiest way to configure ep-parity is the interactive setup wizard:
+
+```bash
+ep-parity init
+```
+
+This prompts you for:
+- Your database username and password (password is hidden while typing)
+- Which environment to connect to (qa, dev, or prod)
+- Where to save output files and where your SQL query files are located
+
+It automatically builds the PostgreSQL connection URIs (handling special characters in passwords) and writes both `.env` and `paths_config.ini` for you.
+
+### Configure (Manual)
+
+If you prefer to set up manually:
 
 ```bash
 cp .env.example .env
 cp paths_config.ini.example paths_config.ini
 ```
 
-Edit `.env` with your database credentials:
+Edit `.env` with your database credentials. The format is `KEY=VALUE` with no quotes or spaces around `=`:
 
 ```properties
-DB_PRIMARY_URI=postgresql://user:pass@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
-DB_REPLICATED_URI=postgresql://user:pass@primary-pariveda-db.qa.internal.marathon-health.com:5432/portal_qa
+DB_PRIMARY_URI=postgresql://jane.doe:your_password@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
+DB_REPLICATED_URI=postgresql://jane.doe:your_password@primary-pariveda-db.qa.internal.marathon-health.com:5432/portal_qa
 ```
+
+If your password contains special characters (`@`, `#`, `%`, `:`), they must be URL-encoded. For example, `p@ss#word` becomes `p%40ss%23word`. The `ep-parity init` command handles this automatically.
 
 Edit `paths_config.ini` with your local paths:
 
@@ -68,13 +91,20 @@ base_path = /Users/yourname/Documents/Parity Testing
 sql_directory = /Users/yourname/Documents/Parity Testing/scripts
 ```
 
+### Getting Your Credentials
+
+Database credentials are issued by the Platform Data team. You need read access to the QA (and optionally production) PostgreSQL databases. Your credentials are typically your Marathon Health Active Directory username and a database-specific password.
+
+If you don't have credentials, ask your team lead or check with Platform Data engineering.
+
 ### Validate Setup
 
 ```bash
-ep-parity validate
+ep-parity validate              # Check config files
+ep-parity validate --check-db   # Also test database connectivity (requires VPN)
 ```
 
-This checks Python version, dependencies, `.env`, `paths_config.ini`, and `comparison_config.ini`.
+This checks Python version, dependencies, `.env`, `paths_config.ini`, `comparison_config.ini`, SQL file availability, and optionally database connectivity.
 
 ### First Run
 
@@ -319,10 +349,38 @@ The Excel workbook contains three sheets:
 Check that the environment is correctly configured.
 
 ```bash
-ep-parity validate
+ep-parity validate              # Config file checks only
+ep-parity validate --check-db   # Also test database connectivity (requires VPN)
 ```
 
-Checks: Python version, virtual environment, installed dependencies, `.env` credentials, `paths_config.ini` paths, and `comparison_config.ini`.
+Checks: Python version, virtual environment, installed dependencies, `.env` credentials, `paths_config.ini` paths, `comparison_config.ini`, SQL file availability, and write permissions. With `--check-db`, also tests live database connectivity and reports connection latency or actionable error messages.
+
+### `ep-parity config show`
+
+Display the current configuration with passwords masked.
+
+```bash
+ep-parity config show
+```
+
+Shows database URIs (with passwords replaced by `****`), configured paths, output format settings, defaults, and comparison rules. Useful for verifying what configuration is actually loaded.
+
+### `ep-parity init`
+
+Interactive setup wizard for first-time configuration.
+
+```bash
+ep-parity init
+```
+
+Prompts for database credentials, environment, and directory paths. Builds PostgreSQL URIs with proper special character escaping. Writes `.env` and `paths_config.ini`, then runs validation.
+
+For CI/automation, use `--non-interactive` with environment variables:
+
+```bash
+EP_INIT_DB_USER=jane EP_INIT_DB_PASS=secret EP_INIT_ENV=qa \
+  ep-parity init --non-interactive
+```
 
 ---
 
@@ -565,22 +623,46 @@ When enabled, the `DatabaseManager` resolves credentials from AWS Secrets Manage
 
 ## Troubleshooting
 
+### Can't connect to the database?
+
+1. **Are you on VPN?** — All databases use `*.internal.marathon-health.com` hostnames that are only reachable through Marathon Health VPN.
+   - Error: `could not translate host name` → Connect to VPN
+   - Error: `connection timed out` → Restart VPN connection
+
+2. **Are your credentials correct?** — Check `.env` for typos, extra spaces, or unescaped special characters.
+   - Error: `password authentication failed` → Run `ep-parity init` to reconfigure
+   - Passwords with `@`, `#`, `%`, or `:` must be URL-encoded (the init wizard handles this)
+
+3. **Is the host/port right?** — Compare your `.env` URIs against `.env.example`.
+   - Error: `connection refused` → Wrong hostname or port, or DB is down
+
+Run `ep-parity config show` to see what configuration is actually loaded.
+
+### Other common issues
+
 | Problem | Solution |
 |---------|----------|
-| `could not translate host name` | Connect to Marathon Health VPN |
 | `ModuleNotFoundError` | Activate virtualenv: `source .venv/bin/activate` |
-| `password authentication failed` | Check credentials in `.env` -- no extra spaces or quotes |
 | `No files found to compare` | Verify the run directory exists and both database folders have data |
+| `No SQL files found` | Check `sql_directory` in `paths_config.ini`; run `ep-parity validate` |
 | `Token has expired and refresh failed` | Run `aws sso login --profile DataEngineerQA` |
 | `No queues found` | Check `--env` is correct and AWS profile has SQS access |
 | DLQ errors detected | Check CloudWatch logs for Lambda errors; fix root cause and reprocess |
 | Timeout during monitoring | Increase `--max_wait_time` or check CloudWatch for stuck Lambdas |
+| `ep-parity: command not found` | Run `pip install -e .` in the ep-parity directory with your virtualenv active |
+
+### Debug mode
 
 For detailed diagnostics, add `-v` before the subcommand:
 
 ```bash
 ep-parity -v export --emp_ids 150 --db_target both
 ```
+
+### Which commands need VPN?
+
+- **Need VPN**: `export`, `monitor`, `validate --check-db`
+- **Offline**: `init`, `validate` (without --check-db), `config show`, `compare`, `report`
 
 ---
 
