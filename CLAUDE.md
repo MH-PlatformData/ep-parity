@@ -34,7 +34,7 @@ pytest tests/
 
 # Run the CLI
 ep-parity --help
-ep-parity export --emp_ids 150 --db_target both
+ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 ep-parity compare --emp_ids 150
 ep-parity monitor --emp_ids 150 --env qa
 ep-parity report --emp_ids 150 289
@@ -55,7 +55,7 @@ ep-parity init
 ep-parity validate
 ```
 
-`ep-parity init` prompts for database credentials and paths, builds the PostgreSQL URIs automatically (handling special character escaping), and writes both `.env` and `paths_config.ini`.
+`ep-parity init` prompts for database credentials per environment (Dev, QA, Prod — passwords may differ), builds all 5 PostgreSQL URIs automatically (handling special character escaping), and writes both `.env` and `paths_config.ini`. Environments can be skipped if the user doesn't have access.
 
 For manual setup, a user needs three config files:
 
@@ -63,8 +63,7 @@ For manual setup, a user needs three config files:
 ```bash
 cp .env.example .env
 # Edit .env — replace placeholders with real credentials
-# Required: DB_PRIMARY_URI, DB_REPLICATED_URI
-# Optional: DB_PRODUCTION_URI, DB_PARIVEDA_DEV_URI
+# 5 possible targets: DB_EP15_DEV_URI, DB_EP15_QA_URI, DB_EP20_DEV_URI, DB_EP20_QA_URI, DB_PRODUCTION_URI
 ```
 
 ### 2. `paths_config.ini` (output paths and SQL query location)
@@ -93,18 +92,26 @@ ep-parity validate --check-db  # also tests database connectivity (requires VPN)
 ## Configuration Details
 
 ### Database targets (--db_target)
-Both short codes and full names are accepted:
-- `pri` / `primary` → DB_PRIMARY_URI
-- `rep` / `replicated` → DB_REPLICATED_URI
-- `both` → exports from both, auto-runs comparison
-- `dev` / `pariveda-dev` → DB_PARIVEDA_DEV_URI
-- `prod` / `production` → DB_PRODUCTION_URI
+Five databases are available, identified by short codes:
+
+| Short Code | Env Var | Database |
+|------------|---------|----------|
+| `ep15-dev` | `DB_EP15_DEV_URI` | EP 1.5 Dev (portal_dev) |
+| `ep15-qa`  | `DB_EP15_QA_URI`  | EP 1.5 QA (portal_qa) |
+| `ep20-dev` | `DB_EP20_DEV_URI` | EP 2.0 Dev (pariveda_dev) |
+| `ep20-qa`  | `DB_EP20_QA_URI`  | EP 2.0 QA (portal_qa) |
+| `prod`     | `DB_PRODUCTION_URI` | Production (portal_production) |
+
+Friendly aliases: `primary-qa` → `ep15-qa`, `replicated-qa` → `ep20-qa`, `production` → `prod`.
+Legacy aliases (`pri`, `rep`) still work with deprecation warnings.
+Specify multiple targets to export from multiple databases: `--db_target ep15-qa --db_target ep20-qa`.
+Comparison auto-runs when exactly 2 targets are specified.
 
 ### Defaults section in paths_config.ini
 Users can set defaults for common CLI arguments:
 ```ini
 [defaults]
-db_target = both
+db_target = ep15-qa ep20-qa
 env = qa
 aws_profile = DataEngineerQA
 check_interval = 120
@@ -143,7 +150,7 @@ Tests mock external dependencies (DB, boto3). No VPN or credentials needed.
 
 ```bash
 docker compose build
-docker compose run ep-parity export --emp_ids 150 --db_target both
+docker compose run ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 ```
 
 Volumes mount config, output, SQL queries, and AWS credentials. `network_mode: host` required for VPN database access.
@@ -182,10 +189,10 @@ Volumes mount config, output, SQL queries, and AWS credentials. `network_mode: h
 When batch processing fails for some employers:
 
 1. Check the summary printed at the end — it lists which employers failed
-2. Re-run only the failed employers: `ep-parity export --emp_ids <failed_ids> --db_target both`
+2. Re-run only the failed employers: `ep-parity export --emp_ids <failed_ids> --db_target ep15-qa --db_target ep20-qa`
 3. Use `--max_retries 1` for transient DB connection issues
 4. For persistent failures, run a single employer with `-v` for debug output:
    ```bash
-   ep-parity -v export --emp_ids <failed_id> --db_target both
+   ep-parity -v export --emp_ids <failed_id> --db_target ep15-qa --db_target ep20-qa
    ```
 5. If one employer consistently fails, check if it has unusual data (very large, special characters in names, etc.)

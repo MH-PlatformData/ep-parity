@@ -68,8 +68,8 @@ def tmp_config_dir(tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text(
         textwrap.dedent("""\
-            DB_PRIMARY_URI=postgresql://user:pass@primary-host:5432/portal
-            DB_REPLICATED_URI=postgresql://user:pass@replicated-host:5432/portal
+            DB_EP15_QA_URI=postgresql://user:pass@primary-host:5432/portal_qa
+            DB_EP20_QA_URI=postgresql://user:pass@replicated-host:5432/portal_qa
         """)
     )
 

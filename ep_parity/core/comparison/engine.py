@@ -80,30 +80,47 @@ class ParityComparison:
     def get_database_directories(
         self,
         run_dir: Path,
-        primary_dir: Path | None = None,
-        replicated_dir: Path | None = None,
+        left_dir: Path | None = None,
+        right_dir: Path | None = None,
     ) -> tuple[Path, Path]:
-        """Get the primary and replicated database directories.
+        """Get the two database directories to compare.
 
-        When *primary_dir* / *replicated_dir* are provided explicitly they are
-        used directly (the "compare pre-existing folders" feature).  Otherwise
-        the standard sub-directory names under *run_dir* are used.
+        When *left_dir* / *right_dir* are provided explicitly they are used
+        directly (the "compare pre-existing folders" feature).  Otherwise
+        auto-detects the two subdirectories inside *run_dir*.
         """
-        if primary_dir is None:
-            primary_dir = run_dir / "primary-portal-db.qa"
-        if replicated_dir is None:
-            replicated_dir = run_dir / "replicated-pariveda-db.qa"
+        if left_dir and right_dir:
+            if not left_dir.exists():
+                raise FileNotFoundError(
+                    f"Left database directory not found: {left_dir}"
+                )
+            if not right_dir.exists():
+                raise FileNotFoundError(
+                    f"Right database directory not found: {right_dir}"
+                )
+            return left_dir, right_dir
 
-        if not primary_dir.exists():
-            raise FileNotFoundError(
-                f"Primary database directory not found: {primary_dir}"
-            )
-        if not replicated_dir.exists():
-            raise FileNotFoundError(
-                f"Replicated database directory not found: {replicated_dir}"
-            )
+        # Auto-detect: find subdirectories in the run directory
+        subdirs = sorted(
+            [d for d in run_dir.iterdir() if d.is_dir()],
+            key=lambda d: d.name,
+        )
 
-        return primary_dir, replicated_dir
+        if len(subdirs) == 2:
+            logger.info(f"Auto-detected directories: {subdirs[0].name}, {subdirs[1].name}")
+            return subdirs[0], subdirs[1]
+        elif len(subdirs) < 2:
+            raise FileNotFoundError(
+                f"Expected 2 database directories in {run_dir}, "
+                f"found {len(subdirs)}. Need 2 for comparison."
+            )
+        else:
+            names = ", ".join(d.name for d in subdirs)
+            raise FileNotFoundError(
+                f"Expected 2 database directories in {run_dir}, "
+                f"found {len(subdirs)}: {names}. "
+                f"Use --left_dir and --right_dir to specify which two to compare."
+            )
 
     def get_files_to_compare(
         self,
@@ -261,8 +278,8 @@ class ParityComparison:
     def run_comparison(
         self,
         output_report: str | Path | None = None,
-        primary_dir: Path | None = None,
-        replicated_dir: Path | None = None,
+        left_dir: Path | None = None,
+        right_dir: Path | None = None,
     ) -> list[dict[str, Any]]:
         """Run the complete parity comparison process.
 
@@ -271,10 +288,10 @@ class ParityComparison:
         output_report:
             Optional path to save the comparison report.  When ``None`` a
             default path inside the run directory is used.
-        primary_dir:
-            Explicit primary directory (skips standard sub-directory lookup).
-        replicated_dir:
-            Explicit replicated directory (skips standard sub-directory lookup).
+        left_dir:
+            Explicit left directory (skips standard sub-directory auto-detection).
+        right_dir:
+            Explicit right directory (skips standard sub-directory auto-detection).
 
         Returns
         -------
@@ -285,8 +302,8 @@ class ParityComparison:
 
             pri_dir, rep_dir = self.get_database_directories(
                 run_dir,
-                primary_dir=primary_dir,
-                replicated_dir=replicated_dir,
+                left_dir=left_dir,
+                right_dir=right_dir,
             )
 
             files_to_compare = self.get_files_to_compare(pri_dir, rep_dir)

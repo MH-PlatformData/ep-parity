@@ -19,45 +19,68 @@ logger = get_logger("config")
 
 # Canonical alias mapping: friendly names -> internal short codes
 DB_TARGET_ALIASES: dict[str, str] = {
-    "pri": "pri",
-    "primary": "pri",
-    "rep": "rep",
-    "replicated": "rep",
-    "both": "both",
-    "dev": "dev",
-    "pariveda-dev": "dev",
+    # Canonical short codes
+    "ep15-dev": "ep15-dev",
+    "ep15-qa": "ep15-qa",
+    "ep20-dev": "ep20-dev",
+    "ep20-qa": "ep20-qa",
     "prod": "prod",
+    # Friendly aliases
+    "primary-dev": "ep15-dev",
+    "primary-qa": "ep15-qa",
+    "replicated-dev": "ep20-dev",
+    "replicated-qa": "ep20-qa",
     "production": "prod",
+    # Legacy aliases (emit deprecation warning in resolve_db_target)
+    "pri": "ep15-qa",
+    "rep": "ep20-qa",
 }
 
 # Maps internal short codes to .env variable names
 DB_TARGET_ENV_VARS: dict[str, str] = {
-    "pri": "DB_PRIMARY_URI",
-    "rep": "DB_REPLICATED_URI",
-    "dev": "DB_PARIVEDA_DEV_URI",
+    "ep15-dev": "DB_EP15_DEV_URI",
+    "ep15-qa": "DB_EP15_QA_URI",
+    "ep20-dev": "DB_EP20_DEV_URI",
+    "ep20-qa": "DB_EP20_QA_URI",
     "prod": "DB_PRODUCTION_URI",
 }
 
 # Maps internal short codes to default output folder names
 DB_TARGET_FOLDER_NAMES: dict[str, str] = {
-    "pri": "primary-portal-db.dev",
-    "rep": "replicated-pariveda-db.qa",
-    "dev": "pariveda-dev-db",
-    "prod": "production-portal-db",
+    "ep15-dev": "ep15-dev",
+    "ep15-qa": "ep15-qa",
+    "ep20-dev": "ep20-dev",
+    "ep20-qa": "ep20-qa",
+    "prod": "prod",
 }
+
+# Legacy env var names -> new env var names (for backward compatibility)
+LEGACY_ENV_VAR_MAP: dict[str, str] = {
+    "DB_PRIMARY_URI": "DB_EP15_QA_URI",
+    "DB_REPLICATED_URI": "DB_EP20_QA_URI",
+    "DB_PARIVEDA_DEV_URI": "DB_EP20_DEV_URI",
+}
+
+_LEGACY_ALIASES = {"pri", "rep"}
 
 
 def resolve_db_target(target: str) -> str:
     """Resolve a user-supplied DB target string to an internal short code.
 
-    Accepts both short codes ('pri', 'rep') and friendly names ('primary', 'replicated').
+    Accepts canonical codes (ep15-qa, ep20-dev, prod), friendly names
+    (primary-qa, replicated-dev, production), and legacy aliases (pri, rep).
+    Legacy aliases emit a deprecation warning.
+
     Raises ValueError for unknown targets.
     """
     normalized = target.lower().strip()
     if normalized not in DB_TARGET_ALIASES:
-        valid = ", ".join(sorted(DB_TARGET_ALIASES.keys()))
+        valid = ", ".join(sorted(k for k in DB_TARGET_ALIASES if k not in _LEGACY_ALIASES))
         raise ValueError(f"Unknown db_target '{target}'. Valid options: {valid}")
-    return DB_TARGET_ALIASES[normalized]
+    resolved = DB_TARGET_ALIASES[normalized]
+    if normalized in _LEGACY_ALIASES:
+        logger.warning(f"'{normalized}' is deprecated. Use '{resolved}' instead.")
+    return resolved
 
 
 def _find_config_dir(explicit_path: str | None = None) -> Path:
@@ -199,6 +222,9 @@ class AppConfig:
 
         If use_aws_secrets is enabled, this returns an empty string — the
         DatabaseManager handles secret resolution.
+
+        Falls back to legacy env var names (DB_PRIMARY_URI, etc.) with a
+        deprecation warning if the new names are not set.
         """
         if self.use_aws_secrets:
             return ""
@@ -207,18 +233,22 @@ class AppConfig:
             raise ValueError(f"No environment variable mapped for db target '{target}'")
         uri = os.getenv(env_var, "")
         if not uri:
+            # Fallback: check legacy env var names
+            for legacy_var, new_var in LEGACY_ENV_VAR_MAP.items():
+                if new_var == env_var:
+                    uri = os.getenv(legacy_var, "")
+                    if uri:
+                        logger.warning(
+                            f"Using legacy env var {legacy_var}. "
+                            f"Rename to {env_var} in your .env file."
+                        )
+                        break
+        if not uri:
             raise ValueError(
                 f"{env_var} not set. Run 'ep-parity init' to configure credentials, "
                 f"or add {env_var} to your .env file."
             )
         return uri
-
-    def get_db_targets(self, target: str) -> list[str]:
-        """Expand a target (which may be 'both') into a list of short codes."""
-        resolved = resolve_db_target(target)
-        if resolved == "both":
-            return ["pri", "rep"]
-        return [resolved]
 
     def get_folder_name(self, target: str) -> str:
         """Get the output folder name for a DB target short code."""

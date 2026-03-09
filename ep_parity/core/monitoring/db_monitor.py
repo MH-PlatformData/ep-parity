@@ -15,17 +15,19 @@ logger = get_logger("monitoring.db")
 class EP15Monitor:
     """Monitor EP 1.5 processing via cleaned_datasets state."""
 
-    def __init__(self, db: DatabaseManager, employer_id: int):
+    def __init__(self, db: DatabaseManager, employer_id: int, target: str = "ep15-qa"):
         """Initialise the EP 1.5 monitor.
 
         Args:
             db: Shared DatabaseManager instance.  The DB lifecycle is
                 owned by the caller, not this monitor.
             employer_id: Employer ID to monitor.
+            target: Database target short code to query (e.g. 'ep15-qa', 'ep15-dev').
         """
         self.db = db
         self.employer_id = employer_id
-        logger.info(f"EP 1.5 Monitor initialised for employer {employer_id}")
+        self.target = target
+        logger.info(f"EP 1.5 Monitor initialised for employer {employer_id} on {target}")
 
     def check_processing_complete(self) -> tuple[bool, dict]:
         """Check if EP 1.5 processing is complete.
@@ -62,7 +64,7 @@ class EP15Monitor:
 
         try:
             row = self.db.execute_scalar(
-                "pri", query, {"employer_id": self.employer_id}
+                self.target, query, {"employer_id": self.employer_id}
             )
 
             if not row:

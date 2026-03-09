@@ -16,15 +16,15 @@ def _compare_single(
     emp_id: str,
     config,
     run_timestamp: str | None,
-    primary_dir: str | None,
-    replicated_dir: str | None,
+    left_dir: str | None,
+    right_dir: str | None,
 ) -> TaskResult:
     """Compare results for a single employer. Used as task_fn for run_batch."""
     try:
         comparison = ParityComparison(config, emp_id, run_timestamp=run_timestamp)
         results = comparison.run_comparison(
-            primary_dir=primary_dir,
-            replicated_dir=replicated_dir,
+            left_dir=left_dir,
+            right_dir=right_dir,
         )
 
         total = len(results)
@@ -57,16 +57,16 @@ def _compare_single(
     help="Specific run timestamp folder (default: most recent).",
 )
 @click.option(
-    "--primary_dir",
+    "--left_dir",
     type=click.Path(exists=True),
     default=None,
-    help="Explicit primary directory (for comparing pre-existing folders).",
+    help="Explicit left directory (for comparing pre-existing folders).",
 )
 @click.option(
-    "--replicated_dir",
+    "--right_dir",
     type=click.Path(exists=True),
     default=None,
-    help="Explicit replicated directory (for comparing pre-existing folders).",
+    help="Explicit right directory (for comparing pre-existing folders).",
 )
 @click.pass_context
 def compare(
@@ -76,10 +76,10 @@ def compare(
     max_workers: int | None,
     max_retries: int,
     run_timestamp: str | None,
-    primary_dir: str | None,
-    replicated_dir: str | None,
+    left_dir: str | None,
+    right_dir: str | None,
 ) -> None:
-    """Compare parity results between primary and replicated databases.
+    """Compare parity results between two database exports.
 
     Examples:
 
@@ -87,7 +87,7 @@ def compare(
 
         ep-parity compare --emp_ids 150 289 --run_timestamp "11-14-25 1530"
 
-        ep-parity compare --emp_ids 289 --primary_dir /path/to/primary --replicated_dir /path/to/replicated
+        ep-parity compare --emp_ids 289 --left_dir /path/to/ep15-qa --right_dir /path/to/ep20-qa
     """
     config = get_config(ctx)
     start = time.time()
@@ -98,8 +98,8 @@ def compare(
         task_kwargs={
             "config": config,
             "run_timestamp": run_timestamp,
-            "primary_dir": primary_dir,
-            "replicated_dir": replicated_dir,
+            "left_dir": left_dir,
+            "right_dir": right_dir,
         },
         parallel=parallel,
         max_workers=max_workers,

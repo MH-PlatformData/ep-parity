@@ -28,7 +28,7 @@ class ProcessingMonitor(Protocol):
 
 
 def check_deposited_file(
-    db: DatabaseManager, employer_id: int
+    db: DatabaseManager, employer_id: int, target: str = "ep15-qa"
 ) -> tuple[bool, dict]:
     """Check if a deposited file for *employer_id* was created today.
 
@@ -37,6 +37,7 @@ def check_deposited_file(
     Args:
         db: Shared DatabaseManager instance.
         employer_id: Employer to look up.
+        target: Database target short code to query.
 
     Returns:
         tuple of (file_exists_today, details_dict).
@@ -58,7 +59,7 @@ def check_deposited_file(
     """
 
     try:
-        row = db.execute_scalar("pri", query, {"employer_id": employer_id})
+        row = db.execute_scalar(target, query, {"employer_id": employer_id})
 
         if not row:
             return False, {

@@ -62,36 +62,62 @@ class TestBuildUri:
 
 
 class TestWriteEnvFile:
-    """Verify _write_env_file produces valid .env content."""
+    """Verify _write_env_file produces valid .env content with per-environment credentials."""
 
-    def test_creates_env_file(self, tmp_path):
+    def test_creates_env_file_with_qa_credentials(self, tmp_path):
         output = tmp_path / ".env"
-        uris = {
-            "pri": "postgresql://u:p@pri-host:5432/db",
-            "rep": "postgresql://u:p@rep-host:5432/db",
-        }
-        _write_env_file(output, uris, "qa")
+        env_credentials = {"qa": ("alice", "secret")}
+        _write_env_file(output, env_credentials)
 
         assert output.exists()
         content = output.read_text()
-        assert "DB_PRIMARY_URI=postgresql://u:p@pri-host:5432/db" in content
-        assert "DB_REPLICATED_URI=postgresql://u:p@rep-host:5432/db" in content
+        assert "DB_EP15_QA_URI=" in content
+        assert "DB_EP20_QA_URI=" in content
+        assert "alice" in content
 
-    def test_includes_env_comment(self, tmp_path):
+    def test_unconfigured_environments_are_commented_out(self, tmp_path):
         output = tmp_path / ".env"
-        _write_env_file(output, {"pri": "x", "rep": "y"}, "prod")
+        env_credentials = {"qa": ("alice", "secret")}
+        _write_env_file(output, env_credentials)
 
         content = output.read_text()
-        assert "prod" in content
+        # Dev and Prod should be commented out
+        assert "# DB_EP15_DEV_URI=" in content
+        assert "# DB_EP20_DEV_URI=" in content
+        assert "# DB_PRODUCTION_URI=" in content
+
+    def test_all_environments_configured(self, tmp_path):
+        output = tmp_path / ".env"
+        env_credentials = {
+            "dev": ("dev_user", "dev_pass"),
+            "qa": ("qa_user", "qa_pass"),
+            "prod": ("prod_user", "prod_pass"),
+        }
+        _write_env_file(output, env_credentials)
+
+        content = output.read_text()
+        assert "DB_EP15_DEV_URI=" in content
+        assert "DB_EP20_DEV_URI=" in content
+        assert "DB_EP15_QA_URI=" in content
+        assert "DB_EP20_QA_URI=" in content
+        assert "DB_PRODUCTION_URI=" in content
+        # None should be commented out
+        assert "# DB_EP15_DEV_URI=" not in content
+
+    def test_includes_never_commit_warning(self, tmp_path):
+        output = tmp_path / ".env"
+        _write_env_file(output, {"qa": ("u", "p")})
+
+        content = output.read_text()
         assert "NEVER commit" in content
 
-    def test_only_writes_configured_targets(self, tmp_path):
+    def test_ep20_qa_uses_intentional_hostname_misspelling(self, tmp_path):
+        """EP 2.0 QA uses 'parevida' (not 'pariveda') — this is intentional."""
         output = tmp_path / ".env"
-        _write_env_file(output, {"pri": "postgresql://u:p@h:5432/d"}, "qa")
+        _write_env_file(output, {"qa": ("u", "p")})
 
         content = output.read_text()
-        assert "DB_PRIMARY_URI=" in content
-        assert "DB_REPLICATED_URI" not in content
+        assert "parevida" in content
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +130,7 @@ class TestWritePathsConfig:
 
     def test_creates_ini_file(self, tmp_path):
         output = tmp_path / "paths_config.ini"
-        _write_paths_config(output, "/output/results", "/output/sql", "both")
+        _write_paths_config(output, "/output/results", "/output/sql", "ep15-qa ep20-qa")
 
         assert output.exists()
         content = output.read_text()
@@ -114,15 +140,15 @@ class TestWritePathsConfig:
 
     def test_includes_defaults_section(self, tmp_path):
         output = tmp_path / "paths_config.ini"
-        _write_paths_config(output, "/a", "/b", "primary")
+        _write_paths_config(output, "/a", "/b", "ep15-qa")
 
         content = output.read_text()
         assert "[defaults]" in content
-        assert "db_target = primary" in content
+        assert "db_target = ep15-qa" in content
 
     def test_includes_output_section(self, tmp_path):
         output = tmp_path / "paths_config.ini"
-        _write_paths_config(output, "/a", "/b", "both")
+        _write_paths_config(output, "/a", "/b", "ep15-qa ep20-qa")
 
         content = output.read_text()
         assert "[output]" in content
@@ -134,13 +160,13 @@ class TestWritePathsConfig:
         import configparser
 
         output = tmp_path / "paths_config.ini"
-        _write_paths_config(output, "/my/results", "/my/sql", "both")
+        _write_paths_config(output, "/my/results", "/my/sql", "ep15-qa ep20-qa")
 
         config = configparser.ConfigParser()
         config.read(output)
         assert config.get("paths", "base_path") == "/my/results"
         assert config.get("paths", "sql_directory") == "/my/sql"
-        assert config.get("defaults", "db_target") == "both"
+        assert config.get("defaults", "db_target") == "ep15-qa ep20-qa"
 
 
 # ---------------------------------------------------------------------------
@@ -152,14 +178,13 @@ class TestInitNonInteractive:
     """Test the init command in --non-interactive mode."""
 
     def test_reads_from_env_vars(self, tmp_path):
-        """Non-interactive mode should use EP_INIT_* environment variables."""
+        """Non-interactive mode should use EP_INIT_{ENV}_USER/PASS environment variables."""
         from ep_parity.cli.main import cli
 
         runner = CliRunner()
         env = {
-            "EP_INIT_DB_USER": "testuser",
-            "EP_INIT_DB_PASS": "testpass",
-            "EP_INIT_ENV": "qa",
+            "EP_INIT_QA_USER": "testuser",
+            "EP_INIT_QA_PASS": "testpass",
             "EP_INIT_BASE_PATH": str(tmp_path / "results"),
             "EP_INIT_SQL_DIR": str(tmp_path / "sql"),
         }
@@ -178,12 +203,12 @@ class TestInitNonInteractive:
 
         # Verify .env contains the expected URIs
         env_content = (tmp_path / ".env").read_text()
-        assert "DB_PRIMARY_URI=" in env_content
-        assert "DB_REPLICATED_URI=" in env_content
+        assert "DB_EP15_QA_URI=" in env_content
+        assert "DB_EP20_QA_URI=" in env_content
         assert "testuser" in env_content
 
     def test_fails_when_env_vars_missing(self, tmp_path):
-        """Non-interactive mode should fail when EP_INIT_DB_USER or EP_INIT_DB_PASS are missing."""
+        """Non-interactive mode should fail when no EP_INIT_*_USER/PASS are set."""
         from ep_parity.cli.main import cli
 
         runner = CliRunner()

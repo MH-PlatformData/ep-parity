@@ -173,7 +173,7 @@ def run_export(
     config: AppConfig,
     db: DatabaseManager,
     emp_id: str,
-    db_target: str,
+    db_targets: list[str],
 ) -> tuple[Path, list[str]]:
     """Run the full export workflow for one employer.
 
@@ -181,12 +181,12 @@ def run_export(
         config: Application configuration.
         db: Database manager instance.
         emp_id: Employer ID.
-        db_target: Resolved DB target ('pri', 'rep', 'both', 'dev', 'prod').
+        db_targets: List of resolved DB target short codes (e.g. ['ep15-qa', 'ep20-qa']).
 
     Returns:
         Tuple of (output_directory, list of target short codes that were exported).
     """
-    targets = config.get_db_targets(db_target)
+    targets = db_targets
     output_directory = build_output_directory(config, emp_id)
 
     logger.info(f"Exporting employer {emp_id} to {output_directory}")

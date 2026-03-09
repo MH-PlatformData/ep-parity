@@ -5,7 +5,6 @@ import time
 import click
 
 from ep_parity.cli.common import batch_options, employer_ids_options, get_config
-from ep_parity.core.config import resolve_db_target
 from ep_parity.core.database import DatabaseManager
 from ep_parity.core.monitoring.base_monitor import check_deposited_file, monitor_until_complete
 from ep_parity.core.monitoring.sqs_monitor import SQSQueueMonitor
@@ -15,12 +14,22 @@ from ep_parity.utils.runner import TaskResult, print_summary, run_batch
 
 logger = get_logger("cli.monitor")
 
-# Maps monitor mode to parity db_target
-MODE_TO_DB_TARGET = {
-    "both": "both",
-    "ep15_only": "pri",
-    "ep20_only": "rep",
-}
+
+def _get_monitor_targets(mode: str, env: str) -> list[str]:
+    """Build database target short codes from mode and environment.
+
+    Returns a list of targets like ``["ep15-qa", "ep20-qa"]`` for use by
+    the exporter after monitoring completes.
+    """
+    ep15 = f"ep15-{env}"
+    ep20 = f"ep20-{env}"
+    if mode == "both":
+        return [ep15, ep20]
+    elif mode == "ep15_only":
+        return [ep15]
+    elif mode == "ep20_only":
+        return [ep20]
+    return [ep15, ep20]
 
 
 def _monitor_single(
@@ -39,8 +48,10 @@ def _monitor_single(
     try:
         employer_id = int(emp_id)
 
+        ep15_target = f"ep15-{env}"
+
         # Pre-flight: check deposited file exists
-        file_exists, details = check_deposited_file(db, employer_id)
+        file_exists, details = check_deposited_file(db, employer_id, target=ep15_target)
         if not file_exists:
             return TaskResult(
                 employer_id=emp_id,
@@ -61,7 +72,7 @@ def _monitor_single(
             monitors.append(sqs)
 
         if mode in ("both", "ep15_only"):
-            ep15 = EP15Monitor(db=db, employer_id=employer_id)
+            ep15 = EP15Monitor(db=db, employer_id=employer_id, target=ep15_target)
             monitors.append(ep15)
 
         if not monitors:
@@ -97,11 +108,11 @@ def _monitor_single(
 
         # Run parity testing if requested
         if not skip_parity:
-            db_target = MODE_TO_DB_TARGET.get(mode, "both")
+            db_targets = _get_monitor_targets(mode, env)
             try:
                 from ep_parity.core.exporter import run_export
 
-                output_dir, targets = run_export(config, db, emp_id, db_target)
+                output_dir, targets = run_export(config, db, emp_id, db_targets)
                 parity_msg = f"Exported to {output_dir}"
 
                 # Auto-compare if two targets

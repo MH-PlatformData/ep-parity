@@ -55,23 +55,37 @@ def _check_dependencies() -> bool:
 
 
 def _check_env_file(config_dir: Path) -> bool:
+    from ep_parity.core.config import DB_TARGET_ENV_VARS, LEGACY_ENV_VAR_MAP
+
     env_path = config_dir / ".env"
     if not env_path.exists():
         print("  [FAIL] .env file not found")
-        print("         Copy .env.example and add your credentials")
+        print("         Run 'ep-parity init' or copy .env.example")
         return False
 
     print("  [pass] .env file exists")
     content = env_path.read_text()
-    required_vars = ["DB_PRIMARY_URI", "DB_REPLICATED_URI"]
-    all_ok = True
-    for var in required_vars:
-        if f"{var}=" in content and "your_username:your_password" not in content:
-            print(f"  [pass] {var} configured")
+
+    # Check for legacy env var names
+    for legacy_var, new_var in LEGACY_ENV_VAR_MAP.items():
+        if f"{legacy_var}=" in content and not content.split(f"{legacy_var}=")[0].endswith("#"):
+            print(f"  [warn] {legacy_var} is deprecated — rename to {new_var}")
+
+    # Check new env var names
+    configured = 0
+    total = len(DB_TARGET_ENV_VARS)
+    for target, env_var in DB_TARGET_ENV_VARS.items():
+        if f"{env_var}=" in content and "your_password" not in content.split(f"{env_var}=")[-1].split("\n")[0]:
+            print(f"  [pass] {target:10s} ({env_var})")
+            configured += 1
         else:
-            print(f"  [FAIL] {var} needs configuration")
-            all_ok = False
-    return all_ok
+            print(f"  [    ] {target:10s} ({env_var}) — not configured")
+
+    print(f"  {configured}/{total} database targets configured")
+    if configured == 0:
+        print("  [FAIL] No database targets configured")
+        return False
+    return True
 
 
 def _check_paths_config(config_dir: Path) -> bool:
@@ -282,9 +296,9 @@ def validate(ctx: click.Context, check_db: bool) -> None:
         if not check_db:
             print("  1. Connect to VPN")
             print("  2. ep-parity validate --check-db")
-            print("  3. ep-parity export --emp_ids <ID> --db_target both")
+            print("  3. ep-parity export --emp_ids <ID> --db_target ep15-qa --db_target ep20-qa")
         else:
-            print("  1. ep-parity export --emp_ids <ID> --db_target both")
+            print("  1. ep-parity export --emp_ids <ID> --db_target ep15-qa --db_target ep20-qa")
     else:
         print("[warn] Some checks need attention. Review the issues above.")
         print("\nFor help:")

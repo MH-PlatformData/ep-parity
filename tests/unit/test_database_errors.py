@@ -26,26 +26,26 @@ class TestWrapDbError:
 
     def test_host_not_found(self, db_manager):
         original = Exception("could not translate host name 'bad-host' to address")
-        result = db_manager._wrap_db_error("pri", original)
+        result = db_manager._wrap_db_error("ep15-qa", original)
 
         assert isinstance(result, ConnectionError)
-        assert "pri" in str(result)
+        assert "ep15-qa" in str(result)
         assert "VPN" in str(result)
 
     def test_password_authentication_failed(self, db_manager):
         original = Exception('password authentication failed for user "alice"')
-        result = db_manager._wrap_db_error("rep", original)
+        result = db_manager._wrap_db_error("ep20-qa", original)
 
         assert isinstance(result, ConnectionError)
-        assert "rep" in str(result)
+        assert "ep20-qa" in str(result)
         assert "credentials" in str(result).lower() or "init" in str(result).lower()
 
     def test_connection_refused(self, db_manager):
         original = Exception("could not connect to server: Connection refused")
-        result = db_manager._wrap_db_error("dev", original)
+        result = db_manager._wrap_db_error("ep20-dev", original)
 
         assert isinstance(result, ConnectionError)
-        assert "dev" in str(result)
+        assert "ep20-dev" in str(result)
         assert "host" in str(result).lower() or "port" in str(result).lower()
 
     def test_timed_out(self, db_manager):
@@ -58,7 +58,7 @@ class TestWrapDbError:
 
     def test_unknown_error_returns_original(self, db_manager):
         original = ValueError("something completely unexpected")
-        result = db_manager._wrap_db_error("pri", original)
+        result = db_manager._wrap_db_error("ep15-qa", original)
 
         assert result is original
         assert isinstance(result, ValueError)
@@ -76,9 +76,9 @@ class TestWrapDbError:
         self, db_manager, error_msg
     ):
         """Every wrapped ConnectionError should mention the target name."""
-        result = db_manager._wrap_db_error("pri", Exception(error_msg))
+        result = db_manager._wrap_db_error("ep15-qa", Exception(error_msg))
         assert isinstance(result, ConnectionError)
-        assert "pri" in str(result)
+        assert "ep15-qa" in str(result)
         # All should contain some form of actionable guidance
         msg = str(result).lower()
         assert any(
@@ -102,7 +102,7 @@ class TestTestConnection:
         mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch.object(db_manager, "get_engine", return_value=mock_engine):
-            success, message = db_manager.test_connection("pri")
+            success, message = db_manager.test_connection("ep15-qa")
 
         assert success is True
         assert "connected" in message
@@ -115,10 +115,10 @@ class TestTestConnection:
         )
 
         with patch.object(db_manager, "get_engine", return_value=mock_engine):
-            success, message = db_manager.test_connection("pri")
+            success, message = db_manager.test_connection("ep15-qa")
 
         assert success is False
-        assert "pri" in message
+        assert "ep15-qa" in message
         assert "VPN" in message
 
     def test_failure_with_unknown_error(self, db_manager):
@@ -126,7 +126,7 @@ class TestTestConnection:
         mock_engine.connect.side_effect = RuntimeError("weird db error")
 
         with patch.object(db_manager, "get_engine", return_value=mock_engine):
-            success, message = db_manager.test_connection("pri")
+            success, message = db_manager.test_connection("ep15-qa")
 
         assert success is False
         assert "weird db error" in message

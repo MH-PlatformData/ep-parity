@@ -18,7 +18,7 @@ EP Parity validates that the eligibility processor produces identical results in
 All commands support multiple employers via `--emp_ids` or `--emp_ids_file`, with optional parallel execution.
 
 ```
-ep-parity export   --emp_ids 150 --db_target both
+ep-parity export   --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 ep-parity compare  --emp_ids 150
 ep-parity monitor  --emp_ids 150 --env qa
 ep-parity report   --emp_ids 150 289 300
@@ -59,8 +59,7 @@ ep-parity init
 ```
 
 This prompts you for:
-- Your database username and password (password is hidden while typing)
-- Which environment to connect to (qa, dev, or prod)
+- Database credentials per environment (Dev, QA, Prod — passwords may differ; skip any you don't have)
 - Where to save output files and where your SQL query files are located
 
 It automatically builds the PostgreSQL connection URIs (handling special characters in passwords) and writes both `.env` and `paths_config.ini` for you.
@@ -77,8 +76,16 @@ cp paths_config.ini.example paths_config.ini
 Edit `.env` with your database credentials. The format is `KEY=VALUE` with no quotes or spaces around `=`:
 
 ```properties
-DB_PRIMARY_URI=postgresql://jane.doe:your_password@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
-DB_REPLICATED_URI=postgresql://jane.doe:your_password@primary-pariveda-db.qa.internal.marathon-health.com:5432/portal_qa
+# Dev
+DB_EP15_DEV_URI=postgresql://jane.doe:your_password@primary-portal-db.dev.internal.marathon-health.com:5432/portal_dev
+DB_EP20_DEV_URI=postgresql://jane.doe:your_password@primary-pariveda-db.dev.internal.marathon-health.com:5432/pariveda_dev
+
+# QA (most common)
+DB_EP15_QA_URI=postgresql://jane.doe:your_password@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
+DB_EP20_QA_URI=postgresql://jane.doe:your_password@primary-parevida-db.qa.internal.marathon-health.com:5432/portal_qa
+
+# Production (optional, read-only)
+# DB_PRODUCTION_URI=postgresql://jane.doe:your_password@primary-portal-db.prod.internal.marathon-health.com:5432/portal_production
 ```
 
 If your password contains special characters (`@`, `#`, `%`, `:`), they must be URL-encoded. For example, `p@ss#word` becomes `p%40ss%23word`. The `ep-parity init` command handles this automatically.
@@ -110,7 +117,7 @@ This checks Python version, dependencies, `.env`, `paths_config.ini`, `compariso
 
 ```bash
 # Connect to VPN first!
-ep-parity export --emp_ids 150 --db_target both
+ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 ```
 
 This exports data from both databases and automatically runs a comparison. The report is saved to the output directory configured in `paths_config.ini`.
@@ -124,12 +131,16 @@ EP Parity uses three configuration files. The tool searches for them in this ord
 ### `.env` -- Database Credentials
 
 ```properties
-DB_PRIMARY_URI=postgresql://user:pass@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
-DB_REPLICATED_URI=postgresql://user:pass@primary-pariveda-db.qa.internal.marathon-health.com:5432/portal_qa
-DB_PRODUCTION_URI=postgresql://user:pass@primary-portal-db.prod.internal.marathon-health.com:5432/portal_production
+# Dev
+DB_EP15_DEV_URI=postgresql://user:pass@primary-portal-db.dev.internal.marathon-health.com:5432/portal_dev
+DB_EP20_DEV_URI=postgresql://user:pass@primary-pariveda-db.dev.internal.marathon-health.com:5432/pariveda_dev
 
-# Optional
-# DB_PARIVEDA_DEV_URI=postgresql://user:pass@primary-pariveda-db.dev.internal.marathon-health.com:5432/portal_dev
+# QA
+DB_EP15_QA_URI=postgresql://user:pass@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
+DB_EP20_QA_URI=postgresql://user:pass@primary-parevida-db.qa.internal.marathon-health.com:5432/portal_qa
+
+# Production
+DB_PRODUCTION_URI=postgresql://user:pass@primary-portal-db.prod.internal.marathon-health.com:5432/portal_production
 ```
 
 Never commit `.env` to version control.
@@ -147,7 +158,7 @@ date_format = %%m-%%d-%%y %%H%%M
 
 [defaults]
 # All optional. CLI arguments always override these.
-# db_target = both
+# db_target = ep15-qa ep20-qa
 # env = qa
 # aws_profile = DataEngineerQA
 # check_interval = 120
@@ -202,28 +213,28 @@ Every command that processes employers accepts:
 Export query results from one or both databases.
 
 ```bash
-# Export from both databases (auto-runs comparison)
-ep-parity export --emp_ids 150 --db_target both
+# Export from both QA databases (auto-runs comparison)
+ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 
-# Export from primary only, no comparison
-ep-parity export --emp_ids 150 --db_target primary --no_compare
+# Export from EP 1.5 QA only, no comparison
+ep-parity export --emp_ids 150 --db_target ep15-qa --no_compare
 
 # Multiple employers in parallel
-ep-parity export --emp_ids 150 289 300 --db_target both --parallel
+ep-parity export --emp_ids 150 289 300 --db_target ep15-qa --db_target ep20-qa --parallel
 
-# Employers from a file
-ep-parity export --emp_ids_file employers.txt --db_target replicated
+# Employers from a file, single target
+ep-parity export --emp_ids_file employers.txt --db_target ep20-qa
 
 # Force comparison even for single-db export
-ep-parity export --emp_ids 150 --db_target pri --compare
+ep-parity export --emp_ids 150 --db_target ep15-qa --compare
 ```
 
 Options:
 
 | Option | Description |
 |--------|-------------|
-| `--db_target` | Target database: `primary`/`pri`, `replicated`/`rep`, `both`, `dev`, `production`/`prod` |
-| `--compare / --no_compare` | Run comparison after export (default: auto when db_target=both) |
+| `--db_target` | One or more targets: `ep15-dev`, `ep15-qa`, `ep20-dev`, `ep20-qa`, `prod` (also accepts friendly aliases) |
+| `--compare / --no_compare` | Run comparison after export (default: auto when exactly 2 targets given) |
 
 Output directory structure:
 
@@ -231,11 +242,11 @@ Output directory structure:
 {base_path}/
   YYYY-MM-DD/
     {emp_id} MM-DD-YY HHMM/
-      primary-portal-db.dev/
+      ep15-qa/
         1-deposited_files.psv
         5a-activities-potential.psv
         ...
-      replicated-pariveda-db.qa/
+      ep20-qa/
         1-deposited_files.psv
         5a-activities-potential.psv
         ...
@@ -255,8 +266,8 @@ ep-parity compare --emp_ids 150 289 --run_timestamp "11-14-25 1530"
 
 # Compare explicit directories
 ep-parity compare --emp_ids 289 \
-  --primary_dir /path/to/primary \
-  --replicated_dir /path/to/replicated
+  --left_dir /path/to/ep15-qa \
+  --right_dir /path/to/ep20-qa
 
 # Parallel comparison with retries
 ep-parity compare --emp_ids 150 289 300 --parallel --max_retries 2
@@ -267,8 +278,8 @@ Options:
 | Option | Description |
 |--------|-------------|
 | `--run_timestamp` | Specific run folder timestamp (default: most recent) |
-| `--primary_dir` | Explicit path to primary export folder |
-| `--replicated_dir` | Explicit path to replicated export folder |
+| `--left_dir` | Explicit path to left (e.g. ep15-qa) export folder |
+| `--right_dir` | Explicit path to right (e.g. ep20-qa) export folder |
 
 The comparison report includes:
 
@@ -373,14 +384,16 @@ Interactive setup wizard for first-time configuration.
 ep-parity init
 ```
 
-Prompts for database credentials, environment, and directory paths. Builds PostgreSQL URIs with proper special character escaping. Writes `.env` and `paths_config.ini`, then runs validation.
+Prompts for database credentials per environment (Dev, QA, Prod — passwords may differ). Environments can be skipped if you don't have access. Builds all 5 PostgreSQL URIs with proper special character escaping. Writes `.env` and `paths_config.ini`, then runs validation.
 
 For CI/automation, use `--non-interactive` with environment variables:
 
 ```bash
-EP_INIT_DB_USER=jane EP_INIT_DB_PASS=secret EP_INIT_ENV=qa \
+EP_INIT_QA_USER=jane EP_INIT_QA_PASS=secret \
   ep-parity init --non-interactive
 ```
+
+Set `EP_INIT_DEV_USER`/`EP_INIT_DEV_PASS` and/or `EP_INIT_PROD_USER`/`EP_INIT_PROD_PASS` for additional environments.
 
 ---
 
@@ -389,7 +402,7 @@ EP_INIT_DB_USER=jane EP_INIT_DB_PASS=secret EP_INIT_ENV=qa \
 All commands accept multiple employer IDs directly on the command line:
 
 ```bash
-ep-parity export --emp_ids 150 289 300 --db_target both
+ep-parity export --emp_ids 150 289 300 --db_target ep15-qa --db_target ep20-qa
 ep-parity compare --emp_ids 150 289 300
 ep-parity report --emp_ids 150 289 300
 ```
@@ -406,13 +419,13 @@ Or load them from a file:
 ```
 
 ```bash
-ep-parity export --emp_ids_file employers.txt --db_target both
+ep-parity export --emp_ids_file employers.txt --db_target ep15-qa --db_target ep20-qa
 ```
 
 You can combine both:
 
 ```bash
-ep-parity export --emp_ids 150 --emp_ids_file more_employers.txt --db_target both
+ep-parity export --emp_ids 150 --emp_ids_file more_employers.txt --db_target ep15-qa --db_target ep20-qa
 ```
 
 ### Parallel Mode
@@ -420,7 +433,7 @@ ep-parity export --emp_ids 150 --emp_ids_file more_employers.txt --db_target bot
 Add `--parallel` to process employers concurrently:
 
 ```bash
-ep-parity export --emp_ids 150 289 300 --db_target both --parallel --max_workers 3
+ep-parity export --emp_ids 150 289 300 --db_target ep15-qa --db_target ep20-qa --parallel --max_workers 3
 ```
 
 Sequential mode (the default) is safer and easier to debug. Use parallel mode when:
@@ -432,7 +445,7 @@ Sequential mode (the default) is safer and easier to debug. Use parallel mode wh
 Add `--max_retries 2` for transient failures:
 
 ```bash
-ep-parity export --emp_ids 150 289 300 --db_target both --parallel --max_retries 2
+ep-parity export --emp_ids 150 289 300 --db_target ep15-qa --db_target ep20-qa --parallel --max_retries 2
 ```
 
 ---
@@ -454,7 +467,7 @@ Create a `.env` file at the project root with your database credentials.
 
 ```bash
 docker compose build
-docker compose run --rm ep-parity export --emp_ids 150 --db_target both
+docker compose run --rm ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 docker compose run --rm ep-parity compare --emp_ids 150
 ```
 
@@ -561,9 +574,9 @@ If you are migrating from the original standalone scripts, here is how the old c
 
 | Old Command | New Command |
 |-------------|-------------|
-| `python parity_testing_args.py --emp_id 150 --db_target both` | `ep-parity export --emp_ids 150 --db_target both` |
-| `python parity_testing_args.py --emp_id 150 --db_target both --no_comparison` | `ep-parity export --emp_ids 150 --db_target both --no_compare` |
-| `python parity_testing_args.py --emp_id 150 --db_target pri` | `ep-parity export --emp_ids 150 --db_target primary` |
+| `python parity_testing_args.py --emp_id 150 --db_target both` | `ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa` |
+| `python parity_testing_args.py --emp_id 150 --db_target both --no_comparison` | `ep-parity export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa --no_compare` |
+| `python parity_testing_args.py --emp_id 150 --db_target pri` | `ep-parity export --emp_ids 150 --db_target ep15-qa` |
 | `python compare_parity_results.py --emp_id 150` | `ep-parity compare --emp_ids 150` |
 | `python compare_parity_results.py --emp_id 150 --run_timestamp "11-09-25 1405"` | `ep-parity compare --emp_ids 150 --run_timestamp "11-09-25 1405"` |
 | `python compare_parity_results.py --emp_id 150 -v` | `ep-parity -v compare --emp_ids 150` |
@@ -572,7 +585,7 @@ If you are migrating from the original standalone scripts, here is how the old c
 | `python monitor_dual_processors.py --employer_id 150 --env qa --ep20_only` | `ep-parity monitor --emp_ids 150 --env qa --mode ep20_only` |
 | `python monitor_dual_processors.py --employer_id 150 --env qa --skip_parity` | `ep-parity monitor --emp_ids 150 --env qa --skip_parity` |
 | `python monitor_and_test_parity.py --employer_id 150 --env qa` | `ep-parity monitor --emp_ids 150 --env qa --mode ep20_only` |
-| `python run_parity_multi_employer.py --emp_ids 150 289 --db_target both --parallel` | `ep-parity export --emp_ids 150 289 --db_target both --parallel` |
+| `python run_parity_multi_employer.py --emp_ids 150 289 --db_target both --parallel` | `ep-parity export --emp_ids 150 289 --db_target ep15-qa --db_target ep20-qa --parallel` |
 | `python run_comparison_multi_employer.py --emp_ids 150 289 300` | `ep-parity compare --emp_ids 150 289 300` |
 | `python run_monitor_multi_employer.py --employer_ids 150 289 --env qa` | `ep-parity monitor --emp_ids 150 289 --env qa` |
 | `python generate_comparison_summary.py --emp_ids 150 289 300` | `ep-parity report --emp_ids 150 289 300` |
@@ -601,11 +614,11 @@ EP Parity supports two modes for database credentials.
 Store PostgreSQL connection URIs in a `.env` file alongside your config:
 
 ```properties
-DB_PRIMARY_URI=postgresql://user:pass@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
-DB_REPLICATED_URI=postgresql://user:pass@primary-pariveda-db.qa.internal.marathon-health.com:5432/portal_qa
+DB_EP15_QA_URI=postgresql://user:pass@primary-portal-db.qa.internal.marathon-health.com:5432/portal_qa
+DB_EP20_QA_URI=postgresql://user:pass@primary-parevida-db.qa.internal.marathon-health.com:5432/portal_qa
 ```
 
-This is the simplest approach for local development and is the default.
+Up to 5 database URIs can be configured (`DB_EP15_DEV_URI`, `DB_EP15_QA_URI`, `DB_EP20_DEV_URI`, `DB_EP20_QA_URI`, `DB_PRODUCTION_URI`). This is the simplest approach for local development and is the default.
 
 ### Mode 2: AWS Secrets Manager
 
@@ -656,7 +669,7 @@ Run `ep-parity config show` to see what configuration is actually loaded.
 For detailed diagnostics, add `-v` before the subcommand:
 
 ```bash
-ep-parity -v export --emp_ids 150 --db_target both
+ep-parity -v export --emp_ids 150 --db_target ep15-qa --db_target ep20-qa
 ```
 
 ### Which commands need VPN?

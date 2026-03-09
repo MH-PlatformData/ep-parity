@@ -6,7 +6,9 @@ import pytest
 
 from ep_parity.core.config import (
     DB_TARGET_ALIASES,
+    DB_TARGET_ENV_VARS,
     DB_TARGET_FOLDER_NAMES,
+    LEGACY_ENV_VAR_MAP,
     AppConfig,
     load_employer_ids_from_file,
     resolve_db_target,
@@ -136,30 +138,90 @@ class TestResolveDbTarget:
     @pytest.mark.parametrize(
         "alias,expected",
         [
-            ("pri", "pri"),
-            ("primary", "pri"),
-            ("rep", "rep"),
-            ("replicated", "rep"),
-            ("both", "both"),
+            # Canonical short codes
+            ("ep15-dev", "ep15-dev"),
+            ("ep15-qa", "ep15-qa"),
+            ("ep20-dev", "ep20-dev"),
+            ("ep20-qa", "ep20-qa"),
             ("prod", "prod"),
+            # Friendly aliases
+            ("primary-dev", "ep15-dev"),
+            ("primary-qa", "ep15-qa"),
+            ("replicated-dev", "ep20-dev"),
+            ("replicated-qa", "ep20-qa"),
             ("production", "prod"),
-            ("dev", "dev"),
-            ("pariveda-dev", "dev"),
+            # Legacy aliases (emit deprecation warning)
+            ("pri", "ep15-qa"),
+            ("rep", "ep20-qa"),
         ],
     )
     def test_valid_aliases(self, alias, expected):
         assert resolve_db_target(alias) == expected
 
     def test_case_insensitive(self):
-        assert resolve_db_target("PRIMARY") == "pri"
+        assert resolve_db_target("EP15-QA") == "ep15-qa"
         assert resolve_db_target("Prod") == "prod"
 
     def test_strips_whitespace(self):
-        assert resolve_db_target("  pri  ") == "pri"
+        assert resolve_db_target("  ep15-qa  ") == "ep15-qa"
 
     def test_invalid_input_raises_value_error(self):
         with pytest.raises(ValueError, match="Unknown db_target"):
             resolve_db_target("invalid_target")
+
+    def test_both_raises_value_error(self):
+        """'both' is no longer a valid target."""
+        with pytest.raises(ValueError, match="Unknown db_target"):
+            resolve_db_target("both")
+
+    def test_legacy_aliases_emit_deprecation_warning(self, recwarn):
+        """Legacy aliases 'pri' and 'rep' should still resolve but with a warning."""
+        import warnings
+        with warnings.catch_warnings(record=True):
+            result = resolve_db_target("pri")
+            assert result == "ep15-qa"
+
+
+# ---------------------------------------------------------------------------
+# AppConfig — get_db_uri with legacy env var fallback
+# ---------------------------------------------------------------------------
+
+
+class TestGetDbUri:
+    def test_new_env_var_used(self, tmp_path, monkeypatch):
+        """get_db_uri reads from the new env var names."""
+        (tmp_path / ".env").write_text("DB_EP15_QA_URI=postgresql://u:p@h:5432/d\n")
+        (tmp_path / "paths_config.ini").write_text("[paths]\nbase_path = /tmp\nsql_directory = /tmp\n")
+        cfg = AppConfig(config_dir=str(tmp_path))
+        assert cfg.get_db_uri("ep15-qa") == "postgresql://u:p@h:5432/d"
+
+    def test_legacy_env_var_fallback(self, tmp_path, monkeypatch):
+        """When new env var is not set, falls back to legacy name."""
+        (tmp_path / ".env").write_text("DB_PRIMARY_URI=postgresql://legacy:p@h:5432/d\n")
+        (tmp_path / "paths_config.ini").write_text("[paths]\nbase_path = /tmp\nsql_directory = /tmp\n")
+        monkeypatch.delenv("DB_EP15_QA_URI", raising=False)
+        cfg = AppConfig(config_dir=str(tmp_path))
+        assert cfg.get_db_uri("ep15-qa") == "postgresql://legacy:p@h:5432/d"
+
+    def test_missing_uri_raises(self, tmp_path, monkeypatch):
+        """Raises ValueError when neither new nor legacy env var is set."""
+        (tmp_path / ".env").write_text("")
+        (tmp_path / "paths_config.ini").write_text("[paths]\nbase_path = /tmp\nsql_directory = /tmp\n")
+        # Clear all DB env vars
+        for var in DB_TARGET_ENV_VARS.values():
+            monkeypatch.delenv(var, raising=False)
+        for var in LEGACY_ENV_VAR_MAP.keys():
+            monkeypatch.delenv(var, raising=False)
+        cfg = AppConfig(config_dir=str(tmp_path))
+        with pytest.raises(ValueError, match="not set"):
+            cfg.get_db_uri("ep15-qa")
+
+    def test_aws_secrets_returns_empty(self, tmp_path):
+        (tmp_path / ".env").write_text("")
+        ini = tmp_path / "paths_config.ini"
+        ini.write_text("[paths]\nbase_path = /tmp\nsql_directory = /tmp\n[defaults]\nuse_aws_secrets = true\n")
+        cfg = AppConfig(config_dir=str(tmp_path))
+        assert cfg.get_db_uri("ep15-qa") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -199,27 +261,6 @@ class TestLoadEmployerIdsFromFile:
 
 
 # ---------------------------------------------------------------------------
-# get_db_targets
-# ---------------------------------------------------------------------------
-
-
-class TestGetDbTargets:
-    def test_both_expands(self, tmp_config_dir):
-        cfg = AppConfig(config_dir=str(tmp_config_dir))
-        assert cfg.get_db_targets("both") == ["pri", "rep"]
-
-    def test_single_target(self, tmp_config_dir):
-        cfg = AppConfig(config_dir=str(tmp_config_dir))
-        assert cfg.get_db_targets("primary") == ["pri"]
-        assert cfg.get_db_targets("rep") == ["rep"]
-
-    def test_invalid_target_raises(self, tmp_config_dir):
-        cfg = AppConfig(config_dir=str(tmp_config_dir))
-        with pytest.raises(ValueError):
-            cfg.get_db_targets("bad_target")
-
-
-# ---------------------------------------------------------------------------
 # DB_TARGET_ALIASES and DB_TARGET_FOLDER_NAMES mappings
 # ---------------------------------------------------------------------------
 
@@ -227,15 +268,26 @@ class TestGetDbTargets:
 class TestMappingConstants:
     def test_aliases_contain_expected_keys(self):
         expected_keys = {
-            "pri", "primary", "rep", "replicated", "both",
-            "dev", "pariveda-dev", "prod", "production",
+            "ep15-dev", "ep15-qa", "ep20-dev", "ep20-qa", "prod",
+            "primary-dev", "primary-qa", "replicated-dev", "replicated-qa",
+            "production",
+            "pri", "rep",
         }
         assert expected_keys == set(DB_TARGET_ALIASES.keys())
 
-    def test_folder_names_contain_expected_keys(self):
-        expected_keys = {"pri", "rep", "dev", "prod"}
+    def test_env_vars_contain_five_targets(self):
+        expected_keys = {"ep15-dev", "ep15-qa", "ep20-dev", "ep20-qa", "prod"}
+        assert expected_keys == set(DB_TARGET_ENV_VARS.keys())
+
+    def test_folder_names_contain_five_targets(self):
+        expected_keys = {"ep15-dev", "ep15-qa", "ep20-dev", "ep20-qa", "prod"}
         assert expected_keys == set(DB_TARGET_FOLDER_NAMES.keys())
 
     def test_folder_names_values_are_strings(self):
         for key, value in DB_TARGET_FOLDER_NAMES.items():
             assert isinstance(value, str), f"Folder name for '{key}' is not a string"
+
+    def test_legacy_env_var_map_entries(self):
+        assert LEGACY_ENV_VAR_MAP["DB_PRIMARY_URI"] == "DB_EP15_QA_URI"
+        assert LEGACY_ENV_VAR_MAP["DB_REPLICATED_URI"] == "DB_EP20_QA_URI"
+        assert LEGACY_ENV_VAR_MAP["DB_PARIVEDA_DEV_URI"] == "DB_EP20_DEV_URI"
