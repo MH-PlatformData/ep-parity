@@ -9,6 +9,7 @@ Migrated from parity_testing_args.py. Handles:
 import csv
 import datetime
 import os
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -119,6 +120,8 @@ def export_queries(
     except Exception as e:
         logger.warning(f"Could not retrieve created_at for {folder_name}: {e}")
 
+    export_start = time.time()
+
     for sql_filename, output_filename in queries.items():
         sql_path = sql_dir / sql_filename
         if not sql_path.exists():
@@ -132,7 +135,9 @@ def export_queries(
         query = read_and_format_sql_file(sql_path, emp_id, created_at, now)
 
         try:
+            query_start = time.time()
             df = db.execute_query(target, query)
+            query_elapsed = time.time() - query_start
             output_path = db_output_dir / output_filename
             df.to_csv(
                 output_path,
@@ -141,9 +146,14 @@ def export_queries(
                 quoting=csv.QUOTE_NONE,
                 escapechar=" ",
             )
-            logger.info(f"Exported {output_filename} to {folder_name} for employer {emp_id}")
+            logger.info(
+                f"  {output_filename}: {len(df)} rows in {query_elapsed:.1f}s"
+            )
         except Exception as e:
             logger.error(f"Error exporting {output_filename}: {e}")
+
+    total_elapsed = time.time() - export_start
+    logger.info(f"All queries for {folder_name}: {total_elapsed:.1f}s total")
 
     return db_output_dir
 
